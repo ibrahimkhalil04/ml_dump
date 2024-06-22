@@ -3,36 +3,60 @@ import numpy as np
 
 
 class Node:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, value=None):
-        self.feature = feature
+    def __init__(self, features=None, target=None, threshold=None, left=None, right=None, split_index=-1): # change the split_inx
+        self.features = features
+        self.target = target
         self.threshold = threshold
         self.left = left
         self.right = right
-        self.value = value
+        self.split_index = split_index
+    
+    
 
-def gini_impurity(y: np.array):
-    # Compute the Gini impurity for a list of labels y
-    uniq, counts = np.unique(y, return_counts=True)
-    p = counts / y.size
-    gini = 1 - np.sum(p**2)
-    return gini
+    def split_node(self):
+        if self.features == None or self.threshold == None or self.split_index == max:
+            return
+        lefts = self.features[:, self.split_index] <= self.threshold
+        left_features = self.features[lefts]
+        right_features = self.features[~lefts]
+        left_target = self.target[lefts]
+        right_target = self.target[~lefts]
+        self.left = Node(features=left_features, target=left_target)
+        self.right = Node(features=right_features, target=right_target)
+        
+
+    def gini_impurity(self, y: np.array):
+        # Compute the Gini impurity for a list of labels y
+        uniq, counts = np.unique(y, return_counts=True)
+        p = counts / y.size
+        gini = 1 - np.sum(p**2)
+        return gini
 
 
-def information_gain(y, y_left, y_right, criterion):
-    # Compute the information gain from splitting y into y_left and y_right
-    if criterion == 'gini':
-        impurity = gini_impurity(y)
-        impurity_left = gini_impurity(y_left)
-        impurity_right = gini_impurity(y_right)
-    elif criterion == 'entropy':
-        pass # Will implement later 
-    elif criterion == 'error':
-        pass # Will implement later 
-    else:
-        raise ValueError("Invalid criterion. Supported criteria are 'gini', 'entropy', and 'error'.")
-    weight_left = y_left.size / y.size
-    weight_right = y_right.size / y.size
-    return impurity - (weight_left*impurity_left + weight_right*impurity_right)
+    def information_gain(self, criterion):
+        # Compute the information gain from splitting y into y_left and y_right
+        self.split_node()
+        if criterion == 'gini':
+            impurity = self.gini_impurity(self.target)
+            impurity_left = self.gini_impurity(self.left.target)
+            impurity_right = self.gini_impurity(self.right.target)
+        elif criterion == 'entropy':
+            pass # Will implement later 
+        elif criterion == 'error':
+            pass # Will implement later 
+        else:
+            raise ValueError("Invalid criterion. Supported criteria are 'gini', 'entropy', and 'error'.")
+        weight_left = self.left.target.size / self.target.size
+        weight_right = self.right.target.size / self.target.size
+        return impurity - (weight_left*impurity_left + weight_right*impurity_right)
+    
+    def is_pure(self, criterion):
+        if self.information_gain(criterion) <= 0.0:
+            return True
+        if np.unique(self.target).size <= 1:
+            return True
+        else :
+            return False
 
 
 
