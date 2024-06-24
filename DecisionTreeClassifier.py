@@ -20,13 +20,14 @@ X_test_std = sc.transform(X_test)
 
 
 class Node:
-    def __init__(self, features=None, target=None, threshold=None, left=None, right=None, split_index=-1): # change the split_inx
+    def __init__(self, features=None, target=None, threshold=None, left=None, right=None, split_index=-1, iG = 0.0): # change the split_inx
         self.features = features
         self.target = target
         self.threshold = threshold
         self.left = left
         self.right = right
-        self.split_index = split_index
+        self.split_index = split_index 
+        self.info_gain = iG
     
     
 
@@ -72,9 +73,9 @@ class Node:
         return impurity - (weight_left*impurity_left + weight_right*impurity_right)
     
     def is_pure(self, criterion):
-        if self.information_gain(criterion) <= 0.0:
+        if self.info_gain <= 0.0:
             return True
-        if np.unique(self.target).size <= 1:
+        if np.unique(self.target).size == 1:
             return True
         else :
             return False
@@ -87,7 +88,7 @@ def best_split(node: Node, criterion):
     rand_split_indx = list(range(node.features[0].size))
     features = [row for row in node.features]
     split_indx = -1
-    score = 0.000001
+    score = 0.0
     threshold = None
 
     for i  in rand_split_indx:
@@ -100,8 +101,8 @@ def best_split(node: Node, criterion):
                 split_indx = i
                 threshold = row[i]
     # Out of the loop, split_indx and thereshold correspond to the best feature indx abd threshold to split the node 
-    node.split_index = split_indx
-    node.threshold = threshold
+
+    return (split_indx, threshold, score)
     features = node.split_node()['features']
     targets = node.split_node()['targets']
     node.left = Node(features=features[0], target=targets[0], threshold=threshold, split_index=split_indx)
@@ -112,17 +113,32 @@ def best_split(node: Node, criterion):
 
 def build_tree(node: Node, depth=0, max_depth=None, min_samples_split=2, criterion='gini'):
     # Recursively build the tree
-    best_split(node, criterion)
-    if not stopping_criteria(node.left, depth+1, max_depth, node.left.target.size, min_samples_split, criterion):
+    split_indx, threshold, score =  best_split(node, criterion)
+    if split_indx != -1 and threshold is not None:
+        node.split_index = split_indx
+        node.threshold = threshold
+        node.info_gain = score
+    if stopping_criteria(node, depth, max_depth, node.target.size, min_samples_split, criterion):
+        return node
+    features = node.split_node()['features']
+    targets = node.split_node()['targets']
+    node.left = Node(features=features[0], target=targets[0])
+    node.right = Node(features= features[1], target= targets[1])
+
+    node.left = build_tree(node.left, depth+1, max_depth, min_samples_split, criterion)
+    node.right = build_tree(node.right, depth+1, max_depth, min_samples_split, criterion)
+    return node
+
+    '''if not stopping_criteria(node.left, depth+1, max_depth, node.left.target.size, min_samples_split, criterion):
         build_tree(node.left, depth+1, max_depth, min_samples_split, criterion)
     if not stopping_criteria(node.right, depth+1, max_depth, node.right.target.size, min_samples_split):
         build_tree(node.right, depth+1, max_depth, min_samples_split, criterion)
-    return
+    return'''
 
 
 
 def stopping_criteria(node : Node, depth, max_depth, n_samples, min_samples_split, criterion = 'gini'):
-    # Determine if we should stop splitting
+    # Determine if we shuld stop splitting
     if node.is_pure(criterion) or depth >= max_depth or n_samples <= min_samples_split:
         return True
     else: return False
@@ -155,3 +171,16 @@ class DecisionTreeClassifier:
 
 tree_model = DecisionTreeClassifier(max_depth=4)
 tree_model.fit(X_train, y_train)
+
+
+def print_tree(node: Node, d):
+    print('Depth: ', d)
+    print('\n')
+    print([t for t in node.target])
+    if node.left is not None:
+        print_tree(node.left, d+1)
+    if node.right is not None:
+        print_tree(node.right, d+1)
+    return
+
+print_tree(tree_model.root, 0)
