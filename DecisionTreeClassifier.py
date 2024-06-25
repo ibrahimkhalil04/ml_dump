@@ -1,3 +1,33 @@
+"""
+Decision Tree Classifier Module
+
+This module implements a Decision Tree Classifier from scratch. 
+It includes the necessary components to build, train, and evaluate a decision tree model.
+
+Classes
+-------
+Node:
+    Represents a node in the decision tree. Handles splitting of data and 
+    calculation of impurities and information gain.
+
+DecisionTreeClassifier:
+    Implements the decision tree classifier. Provides methods for training the model (`fit`), 
+    making predictions (`predict`), and evaluating model performance (`accuracy_score`).
+
+Functions
+---------
+best_split(node: Node, criterion: str) -> tuple:
+    Finds the best feature and threshold to split the data at the given node.
+
+build_tree(node: Node, depth: int = 0, max_depth: int = None, min_samples_split: int = 2, criterion: str = 'gini') -> Node:
+    Recursively builds the decision tree.
+
+stopping_criteria(node: Node, depth: int, max_depth: int, n_samples: int, min_samples_split: int, criterion: str = 'gini') -> bool:
+    Determines if the current node should stop splitting.
+
+predict_tree(node: Node, X: np.ndarray) -> int:
+    Traverses the tree and makes a prediction for a single sample.
+"""
 
 import numpy as np 
 from sklearn import datasets
@@ -6,8 +36,6 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from sklearn.tree import DecisionTreeClassifier as DTClassifier
-
-
 
 # Prep the data
 iris = datasets.load_iris()
