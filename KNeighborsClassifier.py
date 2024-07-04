@@ -51,36 +51,31 @@ class KNeighbors:
     def predict(self, X):
         predictions = []
         for x in X:
-            neighbors = find_neighbors(x, self.data['feature'], self.data['target'], self.n_neighbors, self.p, self.metric )
-            neighbor_labels = [label for _, _, label in neighbors[1]]
-            majority_label = max(set(neighbor_labels), key = neighbor_labels.count)
+            distances = self.calculate_distance(x)
+            nearest_neighbors = self.find_knn(distances)
+            majority_label = max(set(nearest_neighbors), key = list(nearest_neighbors).count)
             predictions.append(majority_label)
+            
         return np.array(predictions)
     
+
     def accuracy_score(self, y_pred: np.array, y_true: np.array):
         return np.sum(y_pred == y_true) / y_true.size
+    
+    def calculate_distance(self, xi):
+        if self.metric == 'minkowski':
+            return np.sum(np.abs(xi - self.data['feature']) ** self.p, axis=1) ** (1 / self.p)
+        else:
+            raise ValueError('Unsupported metric: ' + self.metric)
+
+    def find_knn(self, distances):
+        nearest_indices = np.argsort(distances)[: self.n_neighbors]
+        return y_train[nearest_indices]
 
 
 
-def find_neighbors(x, features=None, target=None, n_neighbors=5, p=2, metric='minkowski'):
-    knn = find_knn(x, features, target, n_neighbors, p, metric)
-    return (x, knn)
-
-def calculate_distance(xi, xj, p, metric):
-    if metric == 'minkowski':
-        return np.sum(np.abs(xi - xj) ** p) ** (1 / p)
-    else:
-        raise ValueError('Unsupported metric: ' + metric)
         
 
-def find_knn(xi=None, Xj=None, target=None, n_neighbors=5, p=2, metric = 'minkowski'):
-    neighbors = []
-    for i, xj in enumerate(Xj):
-        distance = calculate_distance(xi, xj, p, metric)
-        label = target[i]
-        neighbors.append((distance, xj, label))
-    nearest_neighbors = sorted(neighbors, key=lambda x : x[0])[:n_neighbors]
-    return nearest_neighbors
 
 
 knn = KNeighbors(n_neighbors=5, p=2, metric='minkowski')
@@ -132,7 +127,7 @@ y_combined = np.hstack((y_train, y_test))
 plot_decision_regions(X=X_combined, y=y_combined, classifier=knn, test_idx=range(105, 150))
 plt.xlabel("Petal length [cm]")
 plt.ylabel("petal width [cm]")
-plt.title('Trained with my own implementation of a decision tree model')
+plt.title('Trained with my own implementation of K nearest neighbors model')
 plt.legend(loc='best')
 plt.tight_layout()
 plt.show()

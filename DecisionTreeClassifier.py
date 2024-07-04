@@ -29,6 +29,7 @@ predict_tree(node: Node, X: np.ndarray) -> int:
     Traverses the tree and makes a prediction for a single sample.
 """
 
+import random
 import numpy as np 
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
@@ -36,16 +37,9 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from sklearn.tree import DecisionTreeClassifier as DTClassifier
+from sklearn import tree
+import math
 
-# Prep the data
-iris = datasets.load_iris()
-X = iris.data[:, [2, 3]]
-y = iris.target
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=1, stratify=y)
-sc = StandardScaler()
-sc.fit(X_train)
-X_train_std = sc.transform(X_train)
-X_test_std = sc.transform(X_test)
 
 
 
@@ -81,10 +75,11 @@ class Node:
     is_pure():
         Checks if the node is pure (homogeneous).
     """
-    def __init__(self, features=None, target=None, threshold=0.0, left=None, right=None, split_index=-1, iG = 0.0): # change the split_inx
+    def __init__(self, features=None, target=None, depth=0, threshold=0.0, left=None, right=None, split_index=-1, iG = 0.0): # change the split_inx
         self.features = features
         self.target = target
         self.threshold = threshold
+        self.depth = depth
         self.left = left
         self.right = right
         self.split_index = split_index 
@@ -106,7 +101,7 @@ class Node:
         right_features = self.features[~lefts]
         left_target = self.target[lefts]
         right_target = self.target[~lefts]
-        return (Node(features=left_features, target=left_target), Node(features=right_features, target=right_target))
+        return (Node(features=left_features, target=left_target, depth=self.depth+1), Node(features=right_features, target=right_target, depth=self.depth+1))
 
     def gini_impurity(self, y: np.array):
         """
@@ -145,7 +140,7 @@ class Node:
         return impurity - (weight_left*impurity_left + weight_right*impurity_right)
     
     def is_pure(self):
-        if self.info_gain <= 0.001: # min info gain
+        if self.info_gain <= 0.01: # min info gain
             return True
         if np.unique(self.target).size == 1:
             return True
@@ -154,7 +149,7 @@ class Node:
 
 
 
-def best_split(node: Node, criterion):
+def best_split(node: Node, criterion, tree_type='simple', num_features=None):
     """
     Finds the best feature index and threshold to split the data based on the specified criterion.
 
@@ -164,6 +159,11 @@ def best_split(node: Node, criterion):
         The current node in the decision tree where the split is to be evaluated.
     criterion : str
         The criterion to use for evaluating the split ('gini', 'entropy', 'error').
+    tree_type : str, optional
+        The type of tree ('simple' or 'random_forest'). Default is 'simple'.
+    num_features : int, optional
+        The number of features to consider for splitting when tree_type is 'random_forest'. 
+        Default is None.
 
     Returns:
     --------
@@ -176,12 +176,21 @@ def best_split(node: Node, criterion):
     achieved by splitting the node. It returns the feature index, threshold, and information gain score
     that produce the highest gain according to the specified criterion.
     """
+    if tree_type == 'random_forest':
+        if num_features is None:
+            num_features = int(math.sqrt(node.features.shape[1]))
+        selected_features_indices = random.sample(range(node.features.shape[1]), k=num_features)
+        selected_features = node.features[:, selected_features_indices]
+    else :
+        selected_features = node.features
+        selected_features_indices = range(selected_features.shape[1])
+
     best_split_indx = -1
     best_score = 0.0
     best_threshold = 0.0
 
-    for idx  in range(node.features.shape[1]):
-        thresholds = np.unique(node.features[:, idx])
+    for i, idx  in enumerate(selected_features_indices):
+        thresholds = np.unique(selected_features[:, i])
         for threshold in thresholds:
             node.split_index = idx
             node.threshold = threshold
@@ -195,7 +204,7 @@ def best_split(node: Node, criterion):
     return (best_split_indx, best_threshold, best_score)
 
 
-def build_tree(node: Node, depth=0, max_depth=None, min_samples_split=2, criterion='gini'):
+def build_tree(node: Node, max_depth=None, min_samples_split=2, criterion='gini', tree_type='simple', num_features=None):
     """
     Recursively builds the decision tree by splitting nodes based on the best feature and threshold.
 
@@ -211,6 +220,10 @@ def build_tree(node: Node, depth=0, max_depth=None, min_samples_split=2, criteri
         The minimum number of samples required to split an internal node.
     criterion : str, optional (default='gini')
         The function to measure the quality of a split ('gini', 'entropy', or 'error').
+    tree_type : str, optional
+        The type of tree ('simple' or 'random_forest'). Default is 'simple'.
+    num_features : int, optional
+        The number of features to consider for splitting when tree_type is 'random_forest'. Default is None.
 
     Returns:
     --------
@@ -223,40 +236,44 @@ def build_tree(node: Node, depth=0, max_depth=None, min_samples_split=2, criteri
     based on the specified criterion. It stops recursion when the stopping criteria (pure node, max depth, or insufficient samples)
     are met.
     """
-    if stopping_criteria(node, depth, max_depth, node.target.size, min_samples_split, criterion):
-        return node
-    split_indx, threshold, score =  best_split(node, criterion)
-    if split_indx != -1 and threshold == 0.0:
+
+    split_indx, threshold, score =  best_split(node, criterion, tree_type, num_features)
+    if split_indx != -1 and threshold != 0.0:
         node.split_index = split_indx
         node.threshold = threshold
         node.info_gain = score
+    if stopping_criteria(node, max_depth, node.target.size, min_samples_split):
+        return node
+    
     node.left, node.right = node.split_node()
     # Recursively build the tree for left and right child nodes
-    node.left = build_tree(node.left, depth+1, max_depth, min_samples_split, criterion)
-    node.right = build_tree(node.right, depth+1, max_depth, min_samples_split, criterion)
+    node.left = build_tree(node.left, max_depth, min_samples_split, criterion)
+    node.right = build_tree(node.right, max_depth, min_samples_split, criterion)
     return node
 
 
 
-def stopping_criteria(node : Node, depth, max_depth, n_samples, min_samples_split, criterion = 'gini'):
+def stopping_criteria(node : Node, max_depth, n_samples, min_samples_split):
     # Determine if we shuld stop splitting
     if node.is_pure() :
         return True
-    if depth >= max_depth: 
+    if node.depth >= max_depth: 
         return True
     if n_samples <= min_samples_split:
         return True
     return False
 
-def predict_tree(node: Node, X):
+def predict_tree(node: Node, X, max_depth):
     # Traverse the tree and make predictions for X
-    if node.is_pure():
+    if node is None:
+        return
+    if node.is_pure() or node.depth >= max_depth :
         uniq, counts = np.unique(node.target, return_counts=True)
         return uniq[counts.argmax()]
     if X[node.split_index] <= node.threshold:
-        return predict_tree(node.left, X)
+        return predict_tree(node.left, X, max_depth)
     else:
-        return predict_tree(node.right, X)
+        return predict_tree(node.right, X, max_depth)
 
 
 class DecisionTreeClassifier:
@@ -283,18 +300,20 @@ class DecisionTreeClassifier:
         computes the accuracy score of the model based on predicted (y_pred) and true (y_true) target values.
     
     '''
-    def __init__(self, max_depth=None, min_samples_split=2, criterion='gini'):
+    def __init__(self, max_depth=None, min_samples_split=2, criterion='gini', tree_type='simple', num_features=None):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.criterion = criterion
         self.root = None
+        self.tree_type = tree_type
+        self.num_features = num_features
 
     def fit(self, X, y):
         node = Node(X, y)
-        self.root = build_tree(node, 0, self.max_depth, self.min_samples_split, self.criterion)
+        self.root = build_tree(node, self.max_depth, self.min_samples_split, self.criterion, self.tree_type, self.num_features)
 
     def predict(self, X):
-        return np.array([predict_tree(self.root, x) for x in X])
+        return np.array([predict_tree(self.root, x, self.max_depth) for x in X])
     
     def accuracy_score(self, y_pred: np.array, y_true: np.array):
         return np.sum(y_pred == y_true) / y_true.size
@@ -310,12 +329,6 @@ def print_tree(node: Node, d):
     if node.right is not None:
         print_tree(node.right, d+1)
     return
-
-tree_model = DecisionTreeClassifier(max_depth=4)
-tree_model.fit(X_train, y_train)
-predictions =  tree_model.predict(X_test)
-print('Accuracy score : %.3f' % tree_model.accuracy_score(np.array(predictions), y_test))
-
 
 
 
@@ -354,25 +367,46 @@ def plot_decision_regions(X, y, classifier, resolution= 0.02, test_idx=None):
         plt.scatter(X_test[:, 0], X_test[:, 1], c='none', edgecolors='black', 
                     alpha=1.0, linewidths=1, marker='o', s = 100, label= 'Test set')
         
-        
-X_combined = np.vstack((X_train_std, X_test_std))
-y_combined = np.hstack((y_train, y_test))
-plot_decision_regions(X=X_combined, y=y_combined, classifier=tree_model, test_idx=range(105, 150))
-plt.xlabel("Petal length [cm]")
-plt.ylabel("petal width [cm]")
-plt.title('Trained with my own implementation of a decision tree model')
-plt.legend(loc='best')
-plt.tight_layout()
-plt.show()
 
-sk_tree_model = DTClassifier(criterion='gini', max_depth=4, random_state=1)
-sk_tree_model.fit(X_train, y_train)
-X_combined = np.vstack((X_train_std, X_test_std))
-y_combined = np.hstack((y_train, y_test))
-plot_decision_regions(X=X_combined, y=y_combined, classifier=sk_tree_model, test_idx=range(105, 150))
-plt.xlabel("Petal length [cm]")
-plt.ylabel("petal width [cm]")
-plt.title('Trained with sklearn\'s decision tree model')
-plt.legend(loc='best')
-plt.tight_layout()
-plt.show()
+
+def main():
+
+    # Prep the data
+    iris = datasets.load_iris()
+    X = iris.data[:, [2, 3]]
+    y = iris.target
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=1, stratify=y)
+    sc = StandardScaler()
+    sc.fit(X_train)
+    X_train_std = sc.transform(X_train)
+    X_test_std = sc.transform(X_test)
+
+    tree_model = DecisionTreeClassifier(max_depth=4)
+    tree_model.fit(X_train, y_train)
+    predictions =  tree_model.predict(X_test)
+    print('Accuracy score : %.3f' % tree_model.accuracy_score(np.array(predictions), y_test))
+
+    X_combined = np.vstack((X_train_std, X_test_std))
+    y_combined = np.hstack((y_train, y_test))
+    plot_decision_regions(X=X_combined, y=y_combined, classifier=tree_model, test_idx=range(105, 150))
+    plt.xlabel("Petal length [cm]")
+    plt.ylabel("petal width [cm]")
+    plt.title('Trained with my own implementation of a decision tree model')
+    plt.legend(loc='best')
+    plt.tight_layout()
+    plt.show()
+
+    sk_tree_model = DTClassifier(criterion='gini', max_depth=4, random_state=1)
+    sk_tree_model.fit(X_train, y_train)
+    X_combined = np.vstack((X_train_std, X_test_std))
+    y_combined = np.hstack((y_train, y_test))
+    plot_decision_regions(X=X_combined, y=y_combined, classifier=sk_tree_model, test_idx=range(105, 150))
+    plt.xlabel("Petal length [cm]")
+    plt.ylabel("petal width [cm]")
+    plt.title('Trained with sklearn\'s decision tree model')
+    plt.legend(loc='best')
+    plt.tight_layout()
+    plt.show()
+
+if __name__ == "__main__":
+    main()
