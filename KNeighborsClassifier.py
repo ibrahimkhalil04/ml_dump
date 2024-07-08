@@ -74,9 +74,144 @@ class KNeighbors:
 
 
 
+class KdNode:
+    '''' class representing a node in the kd tree 
+    Attributes:
+    ----------
+    data: numpy array
+        the data stored in the node
+    left: KdNode
+        the left child node 
+    right: KdNode
+        the right child node 
+    depth: int
+        the depth of the node
+    cd: int
+        the cutting dimension, the dimension used to split the points into left and right 
+    '''
+
+    def __init__(self, features, target, left=None, right=None, depth=0, cd=0) -> None:
+        self.features = features
+        self.target = target
+        self.left = left
+        self.right = right
+        self.depth = depth
+        self.cd = cd
+
+    def get_elem():
+        pass
+
+
+    def isleaf(self):
+            return True if self.left is None and self.right is None else False
+
+
+
+
+class Kd_tree:
+
+    def __init__(self) -> None:
+        self.root = None
+
+
+    def search(self, value, current: KdNode):
+        if current is None:
+            return None
+        cd = current.cd
+        if np.array_equal(current.features, value):
+            return current
+        if value[cd] < current.features[cd]:
+            return self.search(current.left, value)
+        else:
+            return self.search(current.right, value)
         
 
+    def insert(self, value, current=None, depth=0, cd=0):
+        cd = depth % value.shape[0]
+        if current is None:
+            return KdNode(value, depth=depth, cd=cd)
+        if current.features[cd] > value[cd]:
+            current.left = self.insert(value, current.left, depth+1)
+        else:
+            current.right = self.insert(value, current.right, depth+1)
+        return current
 
+    
+    def remove():
+        pass
+
+
+    def build_tree(self, X, y, depth=0):
+        if len(X) == 0:
+            return None
+        cd = depth % X.shape[1]
+        sorted_indices = X[:, cd].argsort()
+        X_sorted = X[sorted_indices]
+        y_sorted = y[sorted_indices]
+        median_index = len(X_sorted) // 2
+        median_features = X_sorted[median_index]
+        median_target = y_sorted[median_index]
+
+        node = KdNode(features=median_features, target=median_target, depth=depth, cd=cd)
+        node.left = self.build_tree(X[:median_index], y[: median_index], depth=depth+1)
+        node.right = self.build_tree(X[median_index+1:], y[median_index+1:], depth=depth+1)
+        return node
+        
+    def fit(self, X, y):
+        self.root = self.build_tree(X, y)
+
+    
+    def query(self, node, x, n_neighbors):
+        if node.isleaf():
+            distance = np.sqrt(np.sum((x - node.features) ** 2))
+            return [(node.features, node.target,  distance)]
+        neighbors = []
+        other_branch = None
+        # Decide which branch to explore first
+        if x[node.cd] < node.features[node.cd] and node.left is not None:
+            other_branch = node.right
+            neighbors.extend( self.query(node.left, x, n_neighbors))
+        elif x[node.cd] > node.features[node.cd] and node.right is not None:
+            other_branch = node.left
+            neighbors.extend( self.query(node.right, x, n_neighbors))            
+        # If current is None, calculate the distance for the current node
+        if not other_branch :
+            distance = np.sqrt(np.sum((x - node.features) ** 2))
+            return [(node.features, node.target, distance)]
+        else:
+            len_neighbors = len(neighbors)
+            neighbors = np.array(neighbors)
+            neighbors = neighbors[neighbors[:, 2].argsort()]
+            current_max_distance = neighbors[len_neighbors-1][2]
+            dist_with_splitting_plane = np.abs(x[node.cd] - node.features[node.cd])
+            if len_neighbors < n_neighbors or dist_with_splitting_plane <= current_max_distance:
+                other_result = self.query(other_branch, x, n_neighbors)
+                current_max_distance = other_result[0][2]
+                neighbors = list(neighbors)
+                neighbors.extend(other_result)
+
+            if  len(neighbors) >= n_neighbors:
+                neighbors = np.array(neighbors)
+                neighbors = neighbors[np.argsort(neighbors[:, 2])[:n_neighbors]]
+        
+
+        return list(neighbors)
+    
+
+
+    def nearest_neighbors(self, x, n_neighbors):
+        return self.query(self.root, x, n_neighbors) 
+
+
+def test():
+    tree = Kd_tree()
+    tree.fit(X_train, y_train)
+    p = tree.nearest_neighbors([3.5, 1.2], 5)
+    print(p)
+
+
+ 
+test()
 
 knn = KNeighbors(n_neighbors=5, p=2, metric='minkowski')
 knn.fit(X_train, y_train)
