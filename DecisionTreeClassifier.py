@@ -1,7 +1,7 @@
 """
 Decision Tree Classifier Module
 
-This module implements a Decision Tree Classifier from scratch. 
+This module implements a Decision Tree Classifier from scratch (well, numpy will be of great help). 
 It includes the necessary components to build, train, and evaluate a decision tree model.
 
 Classes

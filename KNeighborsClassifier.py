@@ -3,6 +3,7 @@
 
 """
 
+from collections import Counter
 import numpy as np
 import matplotlib.pylab as plt 
 from sklearn import datasets 
@@ -10,6 +11,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from matplotlib.colors import ListedColormap
 from sklearn.neighbors import KNeighborsClassifier 
+from sklearn.metrics import accuracy_score
+import time 
  
 
 #*********
@@ -74,6 +77,30 @@ class KNeighbors:
 
 
 
+
+class KNeighbors_with_KDTree:
+
+    def __init__(self, n_neighbors) -> None:
+        self.n_neighbors =n_neighbors
+        self.tree = None
+
+    def fit(self, X, y):
+        self.tree = Kd_tree()
+        self.tree.fit(X, y)
+
+    def predict(self, X):
+        y_preds = []
+        for x in X:
+            neighbors = self.tree.nearest_neighbors(x, self.n_neighbors)
+            majority_vote = Counter(neighbors).most_common(1)[0][0]
+            y_preds.append(majority_vote)
+        return np.array(y_preds)
+    
+    def accuracy_score(self, y_pred, y_true):
+        return np.sum(y_pred == y_true) / y_true.size
+
+
+
 class KdNode:
     '''' class representing a node in the kd tree 
     Attributes:
@@ -113,33 +140,8 @@ class Kd_tree:
     def __init__(self) -> None:
         self.root = None
 
-
-    def search(self, value, current: KdNode):
-        if current is None:
-            return None
-        cd = current.cd
-        if np.array_equal(current.features, value):
-            return current
-        if value[cd] < current.features[cd]:
-            return self.search(current.left, value)
-        else:
-            return self.search(current.right, value)
-        
-
-    def insert(self, value, current=None, depth=0, cd=0):
-        cd = depth % value.shape[0]
-        if current is None:
-            return KdNode(value, depth=depth, cd=cd)
-        if current.features[cd] > value[cd]:
-            current.left = self.insert(value, current.left, depth+1)
-        else:
-            current.right = self.insert(value, current.right, depth+1)
-        return current
-
-    
-    def remove():
-        pass
-
+    def fit(self, X, y):
+        self.root = self.build_tree(X, y)
 
     def build_tree(self, X, y, depth=0):
         if len(X) == 0:
@@ -157,8 +159,7 @@ class Kd_tree:
         node.right = self.build_tree(X[median_index+1:], y[median_index+1:], depth=depth+1)
         return node
         
-    def fit(self, X, y):
-        self.root = self.build_tree(X, y)
+   
 
     
     def query(self, node, x, n_neighbors):
@@ -171,7 +172,7 @@ class Kd_tree:
         if x[node.cd] < node.features[node.cd] and node.left is not None:
             other_branch = node.right
             neighbors.extend( self.query(node.left, x, n_neighbors))
-        elif x[node.cd] > node.features[node.cd] and node.right is not None:
+        elif x[node.cd] >= node.features[node.cd] and node.right is not None:
             other_branch = node.left
             neighbors.extend( self.query(node.right, x, n_neighbors))            
         # If current is None, calculate the distance for the current node
@@ -200,24 +201,59 @@ class Kd_tree:
 
 
     def nearest_neighbors(self, x, n_neighbors):
-        return self.query(self.root, x, n_neighbors) 
+        neighbors =  self.query(self.root, x, n_neighbors) 
+        neighbors = np.array(neighbors)
+        return neighbors[:, 1]
+
+
+    def search(self, value, current: KdNode):
+        if current is None:
+            return None
+        cd = current.cd
+        if np.array_equal(current.features, value):
+            return current
+        if value[cd] < current.features[cd]:
+            return self.search(current.left, value)
+        else:
+            return self.search(current.right, value)
+        
+
+    def insert(self, value, current=None, depth=0, cd=0):
+        cd = depth % value.shape[0]
+        if current is None:
+            return KdNode(value, depth=depth, cd=cd)
+        if current.features[cd] > value[cd]:
+            current.left = self.insert(value, current.left, depth+1)
+        else:
+            current.right = self.insert(value, current.right, depth+1)
+        return current
+
+    
+
 
 
 def test():
     tree = Kd_tree()
     tree.fit(X_train, y_train)
     p = tree.nearest_neighbors([3.5, 1.2], 5)
-    print(p)
+    #print(p)
 
 
  
 test()
 
-knn = KNeighbors(n_neighbors=5, p=2, metric='minkowski')
+knn = KNeighbors_with_KDTree(n_neighbors=5)
 knn.fit(X_train, y_train)
-
 y_pred = knn.predict(X_test)
 print('Accuracy score : %.3f' % knn.accuracy_score(np.array(y_pred), y_test))
+
+knn_simple = KNeighbors(n_neighbors=5)
+knn_simple.fit(X_train, y_train)
+
+sklearn_knn = KNeighborsClassifier(n_neighbors=5, n_jobs=2, metric='minkowski')
+sklearn_knn.fit(X_train, y_train)
+preds = sklearn_knn.predict(X_test)
+print('Accuracy score from sklearn : %.3f' % accuracy_score(np.array(y_pred), y_test))
 
 
 
@@ -235,7 +271,10 @@ def plot_decision_regions(X, y, classifier, resolution= 0.02, test_idx=None):
     x2_min, x2_max = X[:, 1].min() - 1, X[:, 1].max() + 1
     xx1, xx2, = np.meshgrid(np.arange(x1_min, x1_max, resolution),
                             np.arange(x2_min, x2_max, resolution))
+    start = time.process_time()
     Z = classifier.predict(np.array([xx1.ravel(), xx2.ravel()]).T)
+    end = time.process_time()
+    print('Time spent predicting the labels: %d ms' %((end -start)*10**3))
     Z = Z.reshape(xx1.shape)
     plt.contourf(xx1, xx2, Z, alpha=0.3, cmap= cmap)
     plt.xlim(xx1.min(), xx1.max())
@@ -259,7 +298,7 @@ def plot_decision_regions(X, y, classifier, resolution= 0.02, test_idx=None):
         
 X_combined = np.vstack((X_train_std, X_test_std))
 y_combined = np.hstack((y_train, y_test))
-plot_decision_regions(X=X_combined, y=y_combined, classifier=knn, test_idx=range(105, 150))
+#plot_decision_regions(X=X_combined, y=y_combined, classifier=knn, test_idx=range(105, 150))
 plt.xlabel("Petal length [cm]")
 plt.ylabel("petal width [cm]")
 plt.title('Trained with my own implementation of K nearest neighbors model')
@@ -267,3 +306,4 @@ plt.legend(loc='best')
 plt.tight_layout()
 plt.show()
 
+plot_decision_regions(X=X_combined, y=y_combined, classifier=knn_simple, test_idx=range(105, 150))
