@@ -162,7 +162,36 @@ class Kd_tree:
    
 
     
-    def query(self, node, x, n_neighbors):
+    def query(self, node, x, n_neighbors, best_neigbors=None):
+        # ---------------------------------
+        if best_neigbors is None:
+            best_neigbors = []
+        if node is None:
+            return best_neigbors
+        
+        pt_distance = np.sqrt(np.sum((x - node.features) ** 2))
+        if len(best_neigbors) < n_neighbors:
+            best_neigbors.append((pt_distance, node.target))
+        elif pt_distance < best_neigbors[-1][0]:
+            best_neigbors[-1] = (pt_distance, node.target)
+        best_neigbors.sort()
+
+        diff = x[node.cd] - node.features[node.cd]
+        if diff < 0:
+            next_branch = node.left
+            other_branch = node.right
+        else:
+            next_branch = node.right
+            other_branch = node.left
+        best_neigbors = self.query(next_branch, x, n_neighbors, best_neigbors)
+
+        distance_to_hyperplane = np.abs(diff)
+        if len(best_neigbors) < n_neighbors or distance_to_hyperplane < best_neigbors[-1][0]:
+            best_neigbors = self.query(other_branch, x, n_neighbors, best_neigbors)
+            best_neigbors.sort()
+    
+        #---------------------------
+        '''
         if node.isleaf():
             distance = np.sqrt(np.sum((x - node.features) ** 2))
             return [(node.features, node.target,  distance)]
@@ -172,10 +201,10 @@ class Kd_tree:
         if x[node.cd] < node.features[node.cd] and node.left is not None:
             other_branch = node.right
             neighbors.extend( self.query(node.left, x, n_neighbors))
-        elif x[node.cd] >= node.features[node.cd] and node.right is not None:
+        elif x[node.cd] > node.features[node.cd] and node.right is not None:
             other_branch = node.left
             neighbors.extend( self.query(node.right, x, n_neighbors))            
-        # If current is None, calculate the distance for the current node
+        # If current is None, calculate the distance for the current node 
         if not other_branch :
             distance = np.sqrt(np.sum((x - node.features) ** 2))
             return [(node.features, node.target, distance)]
@@ -194,10 +223,9 @@ class Kd_tree:
             if  len(neighbors) >= n_neighbors:
                 neighbors = np.array(neighbors)
                 neighbors = neighbors[np.argsort(neighbors[:, 2])[:n_neighbors]]
-        
+        '''
 
-        return list(neighbors)
-    
+        return best_neigbors    
 
 
     def nearest_neighbors(self, x, n_neighbors):
@@ -298,7 +326,7 @@ def plot_decision_regions(X, y, classifier, resolution= 0.02, test_idx=None):
         
 X_combined = np.vstack((X_train_std, X_test_std))
 y_combined = np.hstack((y_train, y_test))
-#plot_decision_regions(X=X_combined, y=y_combined, classifier=knn, test_idx=range(105, 150))
+plot_decision_regions(X=X_combined, y=y_combined, classifier=knn, test_idx=range(105, 150))
 plt.xlabel("Petal length [cm]")
 plt.ylabel("petal width [cm]")
 plt.title('Trained with my own implementation of K nearest neighbors model')
